@@ -129,6 +129,14 @@ struct CarEvent @0x9b1657f34caf3ad3 {
     neosUpdateRequiredDEPRECATED @88;
     modelLagWarningDEPRECATED @93;
     startupOneplusDEPRECATED @82;
+
+    pqTimebombWarn @105;
+    pqTimebombBypassing @106;
+    pqTimebombBypassed @107;
+    pqTimebombTERMINAL @108;
+
+
+
   }
 }
 
@@ -166,6 +174,8 @@ struct CarState {
   stockAeb @30 :Bool;
   stockFcw @31 :Bool;
   espDisabled @32 :Bool;
+
+  stopSteering @37 :Bool;
 
   # cruise state
   cruiseState @10 :CruiseState;
