@@ -50,6 +50,7 @@ class TestCarModel(unittest.TestCase):
     for seg in [2, 1, 0]:
       try:
         lr = LogReader(get_url(ROUTES[cls.car_model], seg))
+        print(f"{cls.car_model}: log segment {seg}\n")
         break
       except Exception:
         lr = None
