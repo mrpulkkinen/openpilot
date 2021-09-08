@@ -13,6 +13,7 @@ from selfdrive.car.honda.values import HONDA_BOSCH
 from selfdrive.car.honda.values import CAR as HONDA
 from selfdrive.car.chrysler.values import CAR as CHRYSLER
 from selfdrive.car.hyundai.values import CAR as HYUNDAI
+from selfdrive.car.volkswagen.values import CAR as VOLKSWAGEN
 from selfdrive.test.test_routes import routes, non_tested_cars
 from selfdrive.test.openpilotci import get_url
 from tools.lib.logreader import LogReader
@@ -34,7 +35,8 @@ ignore_carstate_check = [
   CHRYSLER.PACIFICA_2017_HYBRID,
 ]
 
-@parameterized_class(('car_model'), [(car,) for car in all_known_cars()])
+#@parameterized_class(('car_model'), [(car,) for car in all_known_cars()])
+@parameterized_class(('car_model'), [VOLKSWAGEN.SKODA_KAROQ_MK1])
 class TestCarModel(unittest.TestCase):
 
   @classmethod
