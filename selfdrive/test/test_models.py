@@ -36,7 +36,7 @@ ignore_carstate_check = [
 ]
 
 #@parameterized_class(('car_model'), [(car,) for car in all_known_cars()])
-@parameterized_class(('car_model'), [VOLKSWAGEN.SKODA_KAROQ_MK1])
+@parameterized_class(('car_model'), ["SKODA KAROQ 1ST GEN"])
 class TestCarModel(unittest.TestCase):
 
   @classmethod
