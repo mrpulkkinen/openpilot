@@ -31,8 +31,18 @@ void PairingQRWidget::showEvent(QShowEvent *event) {
 }
 
 void PairingQRWidget::refresh() {
+  Params params;
+  QString IMEI = QString::fromStdString(params.get("IMEI"));
+  QString serial = QString::fromStdString(params.get("HardwareSerial"));
+
+  if (std::min(IMEI.length(), serial.length()) <= 5) {
+    qrCode->setText("Error getting serial: contact support");
+    qrCode->setWordWrap(true);
+    qrCode->setStyleSheet(R"(font-size: 60px;)");
+    return;
+  }
   QString pairToken = CommaApi::create_jwt({{"pair", true}});
-  QString qrString = "https://connect.comma.ai/?pair=" + pairToken;
+  QString qrString = IMEI + "--" + serial + "--" + pairToken;
   this->updateQrCode(qrString);
 }
 
