@@ -37,6 +37,11 @@ class Api():
     
 
 def api_get(endpoint, method='GET', timeout=None, access_token=None, **params):
+<<<<<<< HEAD
+=======
+  backend = "https://api.retropilot.org/"
+
+>>>>>>> pr/1
   headers = {}
   if access_token is not None:
     headers['Authorization'] = "JWT "+access_token
