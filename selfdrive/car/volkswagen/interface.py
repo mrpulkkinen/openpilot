@@ -1,6 +1,6 @@
 from cereal import car
 from selfdrive.config import Conversions as CV
-from selfdrive.car.volkswagen.values import CAR, PQ_CARS, CANBUS, BUTTON_STATES, NetworkLocation, TransmissionType, GearShifter
+from selfdrive.car.volkswagen.values import CAR, PQ_CARS, BUTTON_STATES, NetworkLocation, TransmissionType, GearShifter
 from selfdrive.car import STD_CARGO_KG, scale_rot_inertia, scale_tire_stiffness, gen_empty_fingerprint
 from selfdrive.car.interfaces import CarInterfaceBase
 
@@ -14,18 +14,26 @@ class CarInterface(CarInterfaceBase):
     self.displayMetricUnitsPrev = None
     self.buttonStatesPrev = BUTTON_STATES.copy()
 
-    if CP.networkLocation == NetworkLocation.fwdCamera:
-      self.ext_bus = CANBUS.pt
-      self.cp_ext = self.cp
-    else:
-      self.ext_bus = CANBUS.cam
-      self.cp_ext = self.cp_cam
+    # Alias Extended CAN parser to PT/CAM parser, based on detected network location
+    self.cp_ext = self.cp if CP.networkLocation == NetworkLocation.fwdCamera else self.cp_cam
+
+    # PQ timebomb bypass
+    self.pqCounter = 0
+    self.wheelGrabbed = False
+    self.pqBypassCounter = 0
+
+
+
+
+  @staticmethod
+  def compute_gb(accel, speed):
+    return float(accel) / 4.0
 
   @staticmethod
   def get_params(candidate, fingerprint=gen_empty_fingerprint(), car_fw=None):
     ret = CarInterfaceBase.get_std_params(candidate, fingerprint)
     ret.carName = "volkswagen"
-    ret.communityFeature = True
+    ret.communityFeature = True  # technically unsupported, the best kind of unsupported
     ret.radarOffCan = True
 
     if candidate in PQ_CARS:
@@ -38,24 +46,19 @@ class CarInterface(CarInterfaceBase):
       else:  # No trans message at all, must be a true stick-shift manual
         ret.transmissionType = TransmissionType.manual
 
-      if 0x1A0 in fingerprint[1] or 0xAE in fingerprint[1]:
-        ret.networkLocation = NetworkLocation.gateway
-      else:
-        ret.networkLocation = NetworkLocation.fwdCamera
+      # FIXME: need a powertrain message ID to detect gateway installations
+      ret.networkLocation = NetworkLocation.fwdCamera
 
-    else:  # pylint: disable=using-constant-test
+    else:
       # Set global MQB parameters
       ret.safetyModel = car.CarParams.SafetyModel.volkswagen
       ret.enableBsm = 0x30F in fingerprint[0]
 
-      if 0xAD in fingerprint[0]:
-        # Getriebe_11 detected: traditional automatic or DSG gearbox
+      if 0xAD in fingerprint[0]:  # Getriebe_11 detected: traditional automatic or DSG gearbox
         ret.transmissionType = TransmissionType.automatic
-      elif 0x187 in fingerprint[0]:
-        # EV_Gearshift detected: e-Golf or similar direct-drive electric
+      elif 0x187 in fingerprint[0]:  # EV_Gearshift detected: e-Golf or similar direct-drive electric
         ret.transmissionType = TransmissionType.direct
-      else:
-        # No trans message at all, must be a true stick-shift manual
+      else:  # No trans message at all, must be a true stick-shift manual
         ret.transmissionType = TransmissionType.manual
 
       if 0xfd in fingerprint[1]:  # ESP_21 present on bus 1, we're hooked up at the CAN gateway
@@ -78,48 +81,54 @@ class CarInterface(CarInterfaceBase):
     # Per-chassis tuning values, override tuning defaults here if desired
 
     if candidate == CAR.ATLAS_MK1:
+      # Averages of all CA Atlas variants
       ret.mass = 2011 + STD_CARGO_KG
       ret.wheelbase = 2.98
 
     elif candidate == CAR.GOLF_MK6:
+      # Averages of all 1K/5K/AJ Golf variants
       ret.mass = 1379 + STD_CARGO_KG
       ret.wheelbase = 2.58
-      ret.minSteerSpeed = 50 * CV.KPH_TO_MS  # May be lower depending on model-year/EPS FW
+      ret.minSteerSpeed = 20 * CV.KPH_TO_MS  # May be lower depending on model-year/EPS FW
 
     elif candidate == CAR.GOLF_MK7:
+      # Averages of all AU Golf variants
       ret.mass = 1397 + STD_CARGO_KG
       ret.wheelbase = 2.62
 
     elif candidate == CAR.JETTA_MK7:
+      # Averages of all BU Jetta variants
       ret.mass = 1328 + STD_CARGO_KG
       ret.wheelbase = 2.71
 
     elif candidate == CAR.PASSAT_MK8:
+      # Averages of all 3C Passat variants
       ret.mass = 1551 + STD_CARGO_KG
       ret.wheelbase = 2.79
 
     elif candidate == CAR.PASSAT_NMS:
+      # Averages of all A3 Passat NMS
       ret.mass = 1503 + STD_CARGO_KG
       ret.wheelbase = 2.80
       ret.minSteerSpeed = 50 * CV.KPH_TO_MS  # May be lower depending on model-year/EPS FW
 
-    elif candidate == CAR.TCROSS_MK1:
-      ret.mass = 1150 + STD_CARGO_KG
-      ret.wheelbase = 2.60
-
     elif candidate == CAR.TIGUAN_MK2:
+      # Average of SWB and LWB variants
       ret.mass = 1715 + STD_CARGO_KG
       ret.wheelbase = 2.74
 
     elif candidate == CAR.TOURAN_MK2:
+      # Average of SWB and LWB variants
       ret.mass = 1516 + STD_CARGO_KG
       ret.wheelbase = 2.79
 
     elif candidate == CAR.AUDI_A3_MK3:
+      # Averages of all 8V A3 variants
       ret.mass = 1335 + STD_CARGO_KG
       ret.wheelbase = 2.61
 
     elif candidate == CAR.AUDI_Q2_MK1:
+      # Averages of all GA Q2 variants
       ret.mass = 1205 + STD_CARGO_KG
       ret.wheelbase = 2.61
 
@@ -129,28 +138,36 @@ class CarInterface(CarInterfaceBase):
       ret.wheelbase = 2.68
 
     elif candidate == CAR.SEAT_ATECA_MK1:
+      # Averages of all 5F Ateca variants
       ret.mass = 1900 + STD_CARGO_KG
       ret.wheelbase = 2.64
 
     elif candidate == CAR.SEAT_LEON_MK3:
+      # Averages of all 5F Leon variants
       ret.mass = 1227 + STD_CARGO_KG
       ret.wheelbase = 2.64
 
     elif candidate == CAR.SKODA_KODIAQ_MK1:
+      # Averages of all 5N Kodiaq variants
       ret.mass = 1569 + STD_CARGO_KG
       ret.wheelbase = 2.79
 
     elif candidate == CAR.SKODA_OCTAVIA_MK3:
+      # Averages of all 5E/NE Octavia variants
       ret.mass = 1388 + STD_CARGO_KG
       ret.wheelbase = 2.68
 
     elif candidate == CAR.SKODA_SCALA_MK1:
+      # Averages of all NW Scala variants
       ret.mass = 1192 + STD_CARGO_KG
       ret.wheelbase = 2.65
 
     elif candidate == CAR.SKODA_SUPERB_MK3:
+      # Averages of all 3V/NP Scala variants
       ret.mass = 1505 + STD_CARGO_KG
       ret.wheelbase = 2.84
+
+    ret.centerToFront = ret.wheelbase * 0.45
 
     # TODO: get actual value, for now starting with reasonable value for
     # civic and scaling by mass and wheelbase
@@ -158,7 +175,6 @@ class CarInterface(CarInterfaceBase):
 
     # TODO: start from empirically derived lateral slip stiffness for the civic and scale by
     # mass and CG position, so all cars will have approximately similar dyn behaviors
-    ret.centerToFront = ret.wheelbase * 0.45
     ret.tireStiffnessFront, ret.tireStiffnessRear = scale_tire_stiffness(ret.mass, ret.wheelbase, ret.centerToFront,
                                                                          tire_stiffness_factor=tire_stiffness_factor)
 
@@ -175,7 +191,7 @@ class CarInterface(CarInterfaceBase):
     self.cp_cam.update_strings(can_strings)
 
     ret = self.CS.update(self.cp, self.cp_cam, self.cp_ext, self.CP.transmissionType)
-    ret.canValid = self.cp.can_valid and self.cp_cam.can_valid
+    ret.canValid = True # self.cp.can_valid and self.cp_cam.can_valid
     ret.steeringRateLimited = self.CC.steer_rate_limited if self.CC is not None else False
 
     # TODO: add a field for this to carState, car interface code shouldn't write params
@@ -204,6 +220,34 @@ class CarInterface(CarInterfaceBase):
     ret.events = events.to_msg()
     ret.buttonEvents = buttonEvents
 
+    #PQTIMEBOMB STUFF START
+    #Warning alert for the 6min timebomb found on PQ's
+    ret.stopSteering = False
+    if True: #(self.frame % 100) == 0: # Set this to false/False if you want to turn this feature OFF!
+      if ret.cruiseState.enabled:
+        self.pqCounter += 1
+      if self.pqCounter >= 330*100: #time in seconds until counter threshold for pqTimebombWarn alert
+        if not self.wheelGrabbed:
+          events.add(EventName.pqTimebombWarn)
+          if self.pqCounter >= 345*100: #time in seconds until pqTimebombTERMINAL
+            events.add(EventName.pqTimebombTERMINAL)
+            if self.pqCounter >= 359*100: #time in seconds until auto bypass
+              self.wheelGrabbed = True
+        if self.wheelGrabbed or ret.steeringPressed:
+          self.wheelGrabbed = True
+          ret.stopSteering = True
+          self.pqBypassCounter += 1
+          if self.pqBypassCounter >= 1.05*100: #time alloted for bypass
+            self.wheelGrabbed = False
+            self.pqCounter = 0
+            self.pqBypassCounter = 0
+            events.add(EventName.pqTimebombBypassed)
+          else:
+            events.add(EventName.pqTimebombBypassing)
+      if not ret.cruiseState.enabled:
+        self.pqCounter = 0
+    #PQTIMEBOMB STUFF END
+
     # update previous car states
     self.displayMetricUnitsPrev = self.CS.displayMetricUnits
     self.buttonStatesPrev = self.CS.buttonStates.copy()
@@ -212,7 +256,7 @@ class CarInterface(CarInterfaceBase):
     return self.CS.out
 
   def apply(self, c):
-    can_sends = self.CC.update(c.enabled, self.CS, self.frame, self.ext_bus, c.actuators,
+    can_sends = self.CC.update(c.enabled, self.CS, self.frame, c.actuators,
                    c.hudControl.visualAlert,
                    c.hudControl.leftLaneVisible,
                    c.hudControl.rightLaneVisible,
